@@ -3,6 +3,7 @@ import warnings
 import numpy as np
 
 from datasketch.hashfunc import sha1_hash32
+from datasketch.lsh import _optimal_param
 
 # The size of a hash value in number of bytes
 hashvalue_byte_size = len(bytes(np.int64(42).data))
@@ -60,7 +61,8 @@ class MinHash(object):
     def __init__(self, num_perm=128, seed=1,
             hashfunc=sha1_hash32,
             hashobj=None, # Deprecated.
-            hashvalues=None, permutations=None):
+            hashvalues=None, permutations=None,
+            hashrange=None):
         if hashvalues is not None:
             num_perm = len(hashvalues)
         if num_perm > _hash_range:
@@ -78,30 +80,45 @@ class MinHash(object):
         if hashobj is not None:
             warnings.warn("hashobj is deprecated, use hashfunc instead.",
                     DeprecationWarning)
+        # Check hashrange has a valid value
+        if hashrange is not None:
+            if not isinstance(hashrange, tuple) and len(hashrange) == 2:
+                raise ValueError("hahsrange must be a tuple of size 2")
+            if hashrange[0] > hashrange[1]:
+                raise ValueError("hahsrange first value must be <= than second value")
+            self.hashrange = hashrange
         # Initialize hash values
         if hashvalues is not None:
             self.hashvalues = self._parse_hashvalues(hashvalues)
+        elif hashrange is not None:
+            self.hashvalues = self._init_hashvalues(hashrange[1] - hashrange[0])
         else:
             self.hashvalues = self._init_hashvalues(num_perm)
         # Initalize permutation function parameters
         if permutations is not None:
             self.permutations = permutations
         else:
-            self.permutations = self._init_permutations(num_perm)
+            self.permutations = self._init_permutations(num_perm, hashrange)
         if len(self) != len(self.permutations[0]):
             raise ValueError("Numbers of hash values and permutations mismatch")
 
     def _init_hashvalues(self, num_perm):
         return np.ones(num_perm, dtype=np.uint64)*_max_hash
 
-    def _init_permutations(self, num_perm):
+    def _init_permutations(self, num_perm, hashrange=None):
         # Create parameters for a random bijective permutation function
         # that maps a 32-bit hash value to another 32-bit hash value.
         # http://en.wikipedia.org/wiki/Universal_hashing
         gen = np.random.RandomState(self.seed)
-        return np.array([
+        permutations = np.array([
             (gen.randint(1, _mersenne_prime, dtype=np.uint64), gen.randint(0, _mersenne_prime, dtype=np.uint64)) for _ in range(num_perm)
         ], dtype=np.uint64).T
+
+        if hashrange is None:
+            return permutations
+        else:
+            # We keep only the specified hashrange
+            return permutations[:,hashrange[0]:hashrange[1]]
 
     def _parse_hashvalues(self, hashvalues):
         return np.array(hashvalues, dtype=np.uint64)

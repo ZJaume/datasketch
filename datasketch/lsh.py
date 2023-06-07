@@ -72,6 +72,9 @@ class MinHashLSH(object):
         hashfunc (function, optional): If a hash function is provided it will be used to
             compress the index keys to reduce the memory footprint. This could cause a higher
             false positive rate.
+        band (int, optional): To index only one of all the possible bands. This allows
+            to split the index between different workers. Useful when the full index does
+            not fit into memory. Thus, can be executed in different machines.
 
     Note:
         `weights` must sum to 1.0, and the format is
@@ -82,7 +85,8 @@ class MinHashLSH(object):
     '''
 
     def __init__(self, threshold=0.9, num_perm=128, weights=(0.5, 0.5),
-                 params=None, storage_config=None, prepickle=None, hashfunc=None):
+                 params=None, storage_config=None, prepickle=None, hashfunc=None,
+                 band=None):
         storage_config = {'type': 'dict'} if not storage_config else storage_config
         self._buffer_size = 50000
         if threshold > 1.0 or threshold < 0.0:
@@ -106,6 +110,11 @@ class MinHashLSH(object):
             self.b, self.r = _optimal_param(threshold, num_perm,
                     false_positive_weight, false_negative_weight)
 
+        if band != None:
+            if (band < 0 or band > self.b):
+                raise ValueError(f"The band number must be in [0, {self.b}]")
+            self.h = self.r # The length of the index is now equal to the number of rows.
+
         self.prepickle = storage_config['type'] == 'redis' if prepickle is None else prepickle
 
         self.hashfunc = hashfunc
@@ -115,10 +124,14 @@ class MinHashLSH(object):
             self._H = self._byteswap
 
         basename = storage_config.get('basename', _random_name(11))
+        if band is None:
+            self.bands = range(self.b)
+        else:
+            self.bands = [band]
         self.hashtables = [
             unordered_storage(storage_config, name=b''.join([basename, b'_bucket_', struct.pack('>H', i)]))
-            for i in range(self.b)]
-        self.hashranges = [(i*self.r, (i+1)*self.r) for i in range(self.b)]
+            for i in self.bands]
+        self.hashranges = [(i*self.r, (i+1)*self.r) for i in self.bands]
         self.keys = ordered_storage(storage_config, name=b''.join([basename, b'_keys']))
 
     @property
@@ -329,7 +342,7 @@ class MinHashLSH(object):
         else:
             key_set = list(set(keys))
         hashtables = [unordered_storage({'type': 'dict'}) for _ in
-                      range(self.b)]
+                      self.bands]
         Hss = self.keys.getmany(*key_set)
         for key, Hs in zip(key_set, Hss):
             for H, hashtable in zip(Hs, hashtables):
