@@ -240,6 +240,34 @@ class TestMinHashLSH(unittest.TestCase):
         for table in counts:
             self.assertEqual(sum(table.values()), 2)
 
+    def test_partitioned_index(self):
+        ''' Test that partitioned indexes have the same indexed hashes '''
+        set1 = set(['minhash', 'is', 'a', 'probabilistic', 'data', 'structure', 'for',
+                    'estimating', 'the', 'similarity', 'between', 'datasets'])
+        set2 = set(['minhash', 'is', 'a', 'probability', 'data', 'structure', 'for',
+                    'estimating', 'the', 'similarity', 'between', 'documents'])
+        num_perm = 24
+        m1 = MinHash(num_perm=num_perm)
+        m2 = MinHash(num_perm=num_perm)
+        for d in set1:
+            m1.update(d.encode('utf8'))
+        for d in set2:
+            m2.update(d.encode('utf8'))
+        lsh = MinHashLSH(threshold=0.5, num_perm=num_perm)
+        lsh.insert("m1", m1)
+        lsh.insert("m2", m2)
+        for i in range(lsh.b):
+            lshd = MinHashLSH(threshold=0.5, num_perm=num_perm, band=i)
+            m1 = MinHash(num_perm=num_perm)
+            m2 = MinHash(num_perm=num_perm)
+            for d in set1:
+                m1.update(d.encode('utf8'))
+            for d in set2:
+                m2.update(d.encode('utf8'))
+            lshd.insert("m1", m1)
+            lshd.insert("m2", m2)
+        self.assertEqual(lshd.hashtables[0]._dict, lsh.hashtables[i]._dict)
+
 
 class TestWeightedMinHashLSH(unittest.TestCase):
 
