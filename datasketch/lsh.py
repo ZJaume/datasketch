@@ -110,10 +110,8 @@ class MinHashLSH(object):
             self.b, self.r = _optimal_param(threshold, num_perm,
                     false_positive_weight, false_negative_weight)
 
-        if band != None:
-            if (band < 0 or band > self.b):
-                raise ValueError(f"The band number must be in [0, {self.b}]")
-            self.h = self.r # The length of the index is now equal to the number of rows.
+        if band != None and (band < 0 or band > self.b):
+            raise ValueError(f"The band number must be in [0, {self.b}]")
 
         self.prepickle = storage_config['type'] == 'redis' if prepickle is None else prepickle
 
